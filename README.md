@@ -9,20 +9,21 @@
 
 ### 1. 启动 Daemon
 
+本地中转站:
 ```bash
 env ANTHROPIC_AUTH_TOKEN="sk-你的token" \
     ANTHROPIC_BASE_URL="http://127.0.0.1:3000/" \  
-    ANTHROPIC_DEFAULT_SONNET_MODEL="claude-opus-4-8" \
-    ANTHROPIC_DEFAULT_OPUS_MODEL="claude-opus-4-8" \
-    ANTHROPIC_DEFAULT_HAIKU_MODEL="claude-opus-4-8" \
     DISABLE_AUTOUPDATER="1" \
     ./linux-x64 serve --port 7777 --no-browser --detached \
     --dangerously-no-sandbox --dangerously-skip-approvals
 ```
 
-一行版：
+非本地provider需要使用https 如下:
 ```bash
-env ANTHROPIC_AUTH_TOKEN="sk-xxx" ANTHROPIC_BASE_URL="http://127.0.0.1:3000/" ANTHROPIC_DEFAULT_SONNET_MODEL="claude-opus-4-8" ANTHROPIC_DEFAULT_OPUS_MODEL="claude-opus-4-8" ANTHROPIC_DEFAULT_HAIKU_MODEL="claude-opus-4-8" DISABLE_AUTOUPDATER="1" ./linux-x64 serve --port 7777 --no-browser --detached --dangerously-no-sandbox --dangerously-skip-approvals
+export ANTHROPIC_AUTH_TOKEN="sk-your-api-key"
+export ANTHROPIC_BASE_URL="https://xx.xx.xx.xx/"
+export DISABLE_AUTOUPDATER="1"
+./linux-x64 serve --port 7777 --no-browser --detached --dangerously-no-sandbox --dangerously-skip-approvals
 ```
 
 ### 2. 获取登录链接
