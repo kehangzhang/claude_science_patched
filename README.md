@@ -80,6 +80,9 @@ API 端点需兼容 Anthropic Messages API 格式：
 | P3 | `0x67edc85` | `email:W.email??null,provider:null,has_api_key:!1,...auth_mode:"none"` (85B) | `email:"dev@local.c",provider:"o",has_api_key:!0,...auth_mode:"oauth"` (85B) | `/api/me` 返回合法认证状态 |
 | P4 | `0x68e6cfb` | `!1` | `!0` | `/api/auth/status` 返回 `authenticated: true` |
 | P5 | `0x6204d93` | `if(this.credentialResolver)` (27B) | `if(0)                      ` (27B) | 对话路径跳过 OAuth 凭据解析，走 env fallback |
+| P6 | `0x64d428c` | `Y.get(K.id)??` (2B) | `Y.get(K.id)\|\|` (2B) | `jjO()` 空值合并→逻辑或，防止 connector 名称 undefined 传 `.replace()` |
+| P7 | `0x67ed205` | `{id:q.id,name:q.display_name}` (29B) | `{id:q.id,name:q.id}          ` (29B) | `GrG()` 模型名回退为 ID，防止中转站无 `display_name` 时前端崩溃 |
+| P8 | `0x6205301` | `{id:q.id,name:q.displayName }` (29B) | `{id:q.id,name:q.id}          ` (29B) | `listModels()` 同上，camelCase 版本 |
 
 ### 应用 Patch
 
@@ -90,11 +93,22 @@ cp linux-x64.backup linux-x64
 # 应用 5 个 patch
 python3 -c "
 with open('linux-x64','r+b') as f:
+    # P1: 跳过 'requires signing in' 检查
     f.seek(0x6202C40); f.write(b'!1')
+    # P2: 替换 resolve() 错误消息
     f.seek(0x67C02B9); f.write(b'throw Error(\"Credential lookup failed; env fallback. \")                                            ')
+    # P3: /api/me 返回合法认证状态
     f.seek(0x67edc85); f.write(b'email:\"dev@local.c\",provider:\"o\",has_api_key:!0,shared_api_key:!1,auth_mode:\"oauth\"}}')
+    # P4: /api/auth/status 返回 authenticated: true
     f.seek(0x68e6cfb); f.write(b'!0')
+    # P5: 跳过 OAuth 凭据解析
     f.seek(0x6204d93); f.write(b'if(0)                      ')
+    # P6: jjO() ?? -> || 防止 connector 名称 undefined
+    f.seek(0x64d428c); f.write(b'||')
+    # P7: GrG() display_name -> id (模型名回退)
+    f.seek(0x67ed205); f.write(b'{id:q.id,name:q.id}          ')
+    # P8: listModels() displayName -> id (同上)
+    f.seek(0x6205301); f.write(b'{id:q.id,name:q.id}          ')
 "
 ```
 
