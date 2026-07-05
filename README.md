@@ -194,11 +194,62 @@ git -C /home/agent1/software/claude_science checkout fe19c13 -- linux-x64
 
 ---
 
+## macOS ARM64
+
+macOS 版本的二进制已从 DMG 中提取并应用了与 Linux 相同的补丁。
+
+```bash
+# macOS 启动 (替换 linux-x64 为 claude-science-mac-arm64)
+env ANTHROPIC_AUTH_TOKEN="sk-你的token" \
+    ANTHROPIC_BASE_URL="http://127.0.0.1:3000/" \
+    DISABLE_AUTOUPDATER="1" \
+    ./claude-science-mac-arm64 serve --port 7777 --no-browser --detached \
+    --dangerously-no-sandbox --dangerously-skip-approvals
+```
+
+### macOS Patch 详情
+
+macOS 使用 Mach-O 格式，`.bun` 段位于文件偏移 `0x3b74000`（大小 `0x334a60b`）。补丁与 Linux 功能等价但字节偏移不同：
+
+| # | 文件偏移 | 原始 | 替换 | 作用 |
+|---|---------|------|------|------|
+| P1 | `0x4ADA61B` | `z` | `1` | `RF()` 跳过 "requires signing in" 检查 |
+| P2 | `0x4241392` | `throw Error("No credentials available for Anthropic API...")` (99B) | `throw Error("Credential lookup failed; env fallback. ")` (99B) | 错误消息替换 |
+| P3 | `0x42AF266` | `email:w.email??null,provider:null,...auth_mode:"none"` (85B) | `email:"dev@local.c",provider:"o",...auth_mode:"oauth"` (85B) | `/api/me` 假认证 |
+| P4 | `0x4B0B9C7` | `!1` | `!0` | `/api/auth/status` authenticated:true |
+| P5 | `0x4B0A76E` | `if(this.credentialResolver){` (28B) | `if(0)                       ` (28B) | 跳过 OAuth resolver |
+| P6 | `0x42988BE` | `??` | `||` | `jjO()` 空值合并→逻辑或 |
+| P7 | `0x42B20E4` | `{id:X.id,name:X.display_name}` (29B) | `{id:X.id,name:X.id}          ` (29B) | 模型名回退为 ID (2 处) |
+
+### 应用 Patch (macOS)
+
+```bash
+python3 patch_mac.py
+```
+
+或手动：
+
+```bash
+python3 -c "
+with open('claude-science','r+b') as f:
+    f.seek(0x4ADA61B); f.write(b'1')       # P1
+    f.seek(0x4241392); f.write(b'Credential lookup failed; env fallback. ')  # P2 (99B padded)
+    f.seek(0x42AF266); f.write(b'\"dev@local.c\",provider:\"o\",has_api_key:!0')  # P3 (85B)
+    f.seek(0x4B0B9C7); f.write(b'!0')      # P4
+    f.seek(0x4B0A76E); f.write(b'if(0)                       ')  # P5 (28B padded)
+    f.seek(0x42988BE); f.write(b'||')      # P6
+    f.seek(0x42B20E4); f.write(b'{id:X.id,name:X.id}          ')  # P7 x2
+"
+```
+
+---
+
 ## 文件清单
 
 | 文件 | 说明 |
 |------|------|
-| `linux-x64` | 已 patch 二进制  |
+| `linux-x64` | Linux 已 patch 二进制 |
+| `claude-science-mac-arm64` | macOS ARM64 已 patch 二进制 |
 | `linux-x64.backup` | 原始二进制备份 |
 | `analysis_output/` | 逆向分析产物 |
 | `~/.claude-science/` | 运行时数据目录 |
