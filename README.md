@@ -194,12 +194,130 @@ git -C /home/agent1/software/claude_science checkout fe19c13 -- linux-x64
 
 ---
 
-## macOS ARM64
+## macOS ARM64 安装指南
 
-macOS 版本的二进制已从 DMG 中提取并应用了与 Linux 相同的补丁。
+> 支持所有 Apple Silicon Mac（M1 / M2 / M3 / M4 系列）  
+> 系统要求：macOS 13 (Ventura) 或更高版本
+
+### 下载
+
+两个选择：
+
+| 文件 | 大小 | 说明 |
+|------|------|------|
+| `claude-science-mac-arm64` | 112 MB | 独立 CLI 二进制，适合高级用户 |
+| `claude-science-mac-arm64-app.tar.gz` | 135 MB | 完整 `.app` 包（含 GUI 图标和 Dock 启动），推荐 |
+
+### 方式一：使用 .app 包（推荐）
+
+#### 1. 下载并解压
 
 ```bash
-# macOS 启动 (替换 linux-x64 为 claude-science-mac-arm64)
+# 下载（从 GitHub Releases 或直接 clone）
+git clone https://github.com/kehangzhang/claude_science_patched.git
+cd claude_science_patched
+tar -xzf claude-science-mac-arm64-app.tar.gz
+```
+
+#### 2. 移除失效代码签名
+
+> **重要**：patch 破坏了 Apple 的原始代码签名。必须先移除，否则 macOS 会拒绝启动。
+
+```bash
+codesign --remove-signature "Claude Science.app"
+```
+
+如果提示 `codesign` 不可用，需先安装 Xcode Command Line Tools：
+
+```bash
+xcode-select --install
+```
+
+#### 3. （可选）ad-hoc 重签
+
+移除签名后，可以用 ad-hoc 签名（`-` 表示本地临时签名）恢复部分功能，如防火墙例外：
+
+```bash
+codesign --sign - "Claude Science.app"
+```
+
+#### 4. 安装到 /Applications
+
+```bash
+mv "Claude Science.app" /Applications/
+```
+
+#### 5. 首次启动 —— 绕过 Gatekeeper
+
+由于不是 Apple 公证的应用，**首次启动必须右键打开**：
+
+- **方法 A**：Finder → `/Applications/` → 右键 `Claude Science.app` → **打开** → 在弹出的对话框中再次点 **打开**
+- **方法 B**：终端执行：
+
+```bash
+xattr -cr "/Applications/Claude Science.app"
+open "/Applications/Claude Science.app"
+```
+
+> 之后就可以正常双击启动了。
+
+#### 6. 配置环境变量并启动
+
+App 包内的 CLI 位于 `Contents/Resources/bin/claude-science`。创建启动脚本 `~/claude-science.sh`：
+
+```bash
+#!/bin/bash
+export ANTHROPIC_AUTH_TOKEN="sk-你的token"
+export ANTHROPIC_BASE_URL="http://127.0.0.1:3000/"
+export DISABLE_AUTOUPDATER="1"
+
+CLI="/Applications/Claude Science.app/Contents/Resources/bin/claude-science"
+
+case "${1:-serve}" in
+  serve)
+    "$CLI" serve --port 7777 --no-browser --detached \
+      --dangerously-no-sandbox --dangerously-skip-approvals
+    ;;
+  url)   "$CLI" url ;;
+  stop)  "$CLI" stop ;;
+  logs)  "$CLI" logs --tail ;;
+  *)     "$CLI" "$@" ;;
+esac
+```
+
+```bash
+chmod +x ~/claude-science.sh
+~/claude-science.sh serve    # 启动
+~/claude-science.sh url      # 获取登录链接
+~/claude-science.sh stop     # 停止
+```
+
+#### 7. （可选）添加到 PATH
+
+```bash
+# 创建软链接
+sudo ln -sf "/Applications/Claude Science.app/Contents/Resources/bin/claude-science" /usr/local/bin/claude-science
+
+# 之后可以直接在终端运行
+claude-science serve --port 7777
+```
+
+### 方式二：使用独立二进制
+
+适合不需要 GUI 图标、习惯纯终端操作的用户。
+
+```bash
+# 下载
+git clone https://github.com/kehangzhang/claude_science_patched.git
+cd claude_science_patched
+
+# 移除隔离标记
+xattr -d com.apple.quarantine claude-science-mac-arm64
+
+# 赋予执行权限
+chmod +x claude-science-mac-arm64
+
+# 启动
 env ANTHROPIC_AUTH_TOKEN="sk-你的token" \
     ANTHROPIC_BASE_URL="http://127.0.0.1:3000/" \
     DISABLE_AUTOUPDATER="1" \
@@ -207,39 +325,68 @@ env ANTHROPIC_AUTH_TOKEN="sk-你的token" \
     --dangerously-no-sandbox --dangerously-skip-approvals
 ```
 
-### macOS Patch 详情
+### macOS 特定故障排查
 
-macOS 使用 Mach-O 格式，`.bun` 段位于文件偏移 `0x3b74000`（大小 `0x334a60b`）。补丁与 Linux 功能等价但字节偏移不同：
+#### "无法打开，因为无法验证开发者"
+
+```bash
+# 移除隔离属性
+xattr -cr "/Applications/Claude Science.app"
+
+# 或右键 → 打开
+```
+
+#### "codesign: object file format unrecognized"
+
+说明二进制缺少 Mach-O 头 —— 请重新下载，确认文件大小约 112 MB，`file` 命令应输出：
+```
+Mach-O 64-bit arm64 executable
+```
+
+#### 端口已被占用
+
+```bash
+# 查找占用 7777 端口的进程
+lsof -i :7777
+
+# 杀掉旧进程
+kill $(lsof -t -i :7777)
+```
+
+#### daemon 启动失败
+
+```bash
+# 清理锁文件
+rm -f ~/.claude-science/operon.lock
+
+# 杀掉残留进程
+pkill -f "claude-science serve"
+
+# 重新启动
+```
+
+#### 环境变量未生效
+
+在 macOS 上通过 `env` 或 GUI 启动的进程可能拿不到 shell 环境变量，建议使用**启动脚本**（见方式一步骤 6）。
+
+### macOS Patch 详情（供开发者参考）
+
+macOS 使用 Mach-O 格式，`.bun` 段位于文件偏移 `0x3b74000`（大小 `0x334a60b`）。所有 patch 均为同长度字节替换：
 
 | # | 文件偏移 | 原始 | 替换 | 作用 |
 |---|---------|------|------|------|
 | P1 | `0x4ADA61B` | `z` | `1` | `RF()` 跳过 "requires signing in" 检查 |
-| P2 | `0x4241392` | `throw Error("No credentials available for Anthropic API...")` (99B) | `throw Error("Credential lookup failed; env fallback. ")` (99B) | 错误消息替换 |
-| P3 | `0x42AF266` | `email:w.email??null,provider:null,...auth_mode:"none"` (85B) | `email:"dev@local.c",provider:"o",...auth_mode:"oauth"` (85B) | `/api/me` 假认证 |
+| P2 | `0x4241392` | `throw Error("No credentials available...")` (99B) | `throw Error("Credential lookup failed; env fallback. ")` (99B) | 错误消息替换 |
+| P3 | `0x42AF266` | `email:w.email??null,provider:null,...` (85B) | `email:"dev@local.c",provider:"o",...` (85B) | `/api/me` 假认证 |
 | P4 | `0x4B0B9C7` | `!1` | `!0` | `/api/auth/status` authenticated:true |
 | P5 | `0x4B0A76E` | `if(this.credentialResolver){` (28B) | `if(0)                       ` (28B) | 跳过 OAuth resolver |
-| P6 | `0x42988BE` | `??` | `||` | `jjO()` 空值合并→逻辑或 |
+| P6 | `0x42988BE` | `??` | `\|\|` | `jjO()` 空值合并→逻辑或 |
 | P7 | `0x42B20E4` | `{id:X.id,name:X.display_name}` (29B) | `{id:X.id,name:X.id}          ` (29B) | 模型名回退为 ID (2 处) |
 
-### 应用 Patch (macOS)
+用 `patch_mac.py` 一键应用所有补丁：
 
 ```bash
 python3 patch_mac.py
-```
-
-或手动：
-
-```bash
-python3 -c "
-with open('claude-science','r+b') as f:
-    f.seek(0x4ADA61B); f.write(b'1')       # P1
-    f.seek(0x4241392); f.write(b'Credential lookup failed; env fallback. ')  # P2 (99B padded)
-    f.seek(0x42AF266); f.write(b'\"dev@local.c\",provider:\"o\",has_api_key:!0')  # P3 (85B)
-    f.seek(0x4B0B9C7); f.write(b'!0')      # P4
-    f.seek(0x4B0A76E); f.write(b'if(0)                       ')  # P5 (28B padded)
-    f.seek(0x42988BE); f.write(b'||')      # P6
-    f.seek(0x42B20E4); f.write(b'{id:X.id,name:X.id}          ')  # P7 x2
-"
 ```
 
 ---
