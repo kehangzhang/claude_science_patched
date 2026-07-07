@@ -391,12 +391,56 @@ python3 patch_mac.py
 
 ---
 
+## RELAY 版本（推荐中转站使用）
+
+标准 patch 版本（P1-P8）会通过 `eX_()` 过滤器移除所有 Claude 命名格式的模型，
+导致中转站只能看到非 Claude 模型（如 Qwen、GLM），而纯 Claude 的云服务器
+则完全看不到模型。
+
+**RELAY 版本**额外禁用 `eX_()` 过滤器，使所有模型都可见：
+
+| 中转站 | 标准版可用 | RELAY 版可用 |
+|--------|----------|------------|
+| 本地 `http://127.0.0.1:3000/` | 11 个（Qwen/GLM/GPT） | **46 个**（全部） |
+| 云服务器 `https://45.76.217.82/` | 0 个 | **8 个**（全部 Claude） |
+
+### 使用 RELAY 版本
+
+```bash
+# 下载 RELAY 版本
+wget https://github.com/kehangzhang/claude_science_patched/raw/main/linux-x64-relay
+chmod +x linux-x64-relay
+
+# 启动
+env ANTHROPIC_AUTH_TOKEN="sk-xxx" \
+    ANTHROPIC_BASE_URL="http://127.0.0.1:3000/" \
+    DISABLE_AUTOUPDATER="1" \
+    ./linux-x64-relay serve --port 7777 --no-browser --detached \
+    --dangerously-no-sandbox --dangerously-skip-approvals
+```
+
+### 自行 Patch
+
+```bash
+python3 patch_relay.py --platform linux
+```
+
+### RELAY 新增 Patch
+
+| # | 文件偏移 | 原始 | 替换 | 作用 |
+|---|---------|------|------|------|
+| RELAY-1 | `0x64d0cee` | `function eX_(z){return/^[...]/u.test(z)||...}` (127B) | `function eX_(z){return false}...` (127B) | 禁用模型名过滤器，显示全部模型 |
+
+---
+
 ## 文件清单
 
 | 文件 | 说明 |
 |------|------|
-| `linux-x64` | Linux 已 patch 二进制 |
+| `linux-x64` | Linux 标准 patch 二进制 (P1-P8) |
+| `linux-x64-relay` | Linux RELAY 版 (P1-P8 + RELAY-1) — **推荐中转站使用** |
 | `claude-science-mac-arm64` | macOS ARM64 已 patch 二进制 |
+| `claude-science-mac-arm64-app.tar.gz` | macOS `.app` 完整包 |
 | `linux-x64.backup` | 原始二进制备份 |
 | `analysis_output/` | 逆向分析产物 |
 | `~/.claude-science/` | 运行时数据目录 |
