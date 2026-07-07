@@ -1,3 +1,4 @@
 linux-x64 filter=lfs diff=lfs merge=lfs -text
 claude-science-mac-arm64 filter=lfs diff=lfs merge=lfs -text
 *.tar.gz filter=lfs diff=lfs merge=lfs -text
+linux-x64-relay filter=lfs diff=lfs merge=lfs -text
